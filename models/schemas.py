@@ -12,6 +12,18 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
 
 
+class DesignRequest(BaseModel):
+    """Δομημένη φόρμα που συμπληρώνει ο χρήστης"""
+    session_id: str = Field(..., description="Unique session identifier")
+    project_description: str = Field(..., description="What the system should do")
+    team_size: str = Field(..., description="e.g. '3 developers'")
+    scale: str = Field(..., description="e.g. '10,000 users/day'")
+    deadline: str = Field(..., description="e.g. '3 months'")
+    tech_constraints: str = Field(..., description="e.g. 'Must use Spring Boot, MySQL'")
+    capital_constraints: str = Field(..., description="e.g. 'Limited to free tier cloud'")
+    extra_details: str = Field(default="", description="Any additional information")
+
+
 class ChatResponse(BaseModel):
     session_id: str
     answer: str
