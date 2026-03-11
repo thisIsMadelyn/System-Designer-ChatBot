@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from .database import ConversationMessage
+from .models import ConversationMessage
 
 
 async def save_message(db: AsyncSession, session_id: str, role: str, content: str):

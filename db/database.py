@@ -7,15 +7,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = (
-    f"postgresql+asyncpg://"
-    f"{os.getenv('POSTGRES_USER', 'designer_user')}:"
-    f"{os.getenv('POSTGRES_PASSWORD', 'designer_pass')}@"
-    f"{os.getenv('POSTGRES_HOST', 'localhost')}:"
-    f"{os.getenv('POSTGRES_PORT', '5432')}/"
-    f"{os.getenv('POSTGRES_DB', 'system_designer_db')}"
+    f"mysql+aiomysql://"
+    f"{os.getenv('MYSQL_USER', 'root')}:"
+    f"{os.getenv('MYSQL_PASSWORD', '')}@"
+    f"{os.getenv('MYSQL_HOST', 'localhost')}:"
+    f"{os.getenv('MYSQL_PORT', '3306')}/"
+    f"{os.getenv('MYSQL_DB', 'system_design_db')}"
+    f"?charset=utf8mb4"
 )
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,
@@ -26,16 +32,6 @@ AsyncSessionLocal = sessionmaker(
 
 class Base(DeclarativeBase):
     pass
-
-
-class ConversationMessage(Base):
-    __tablename__ = "conversations"
-
-    id         = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(255), nullable=False, index=True)
-    role       = Column(String(50), nullable=False)
-    content    = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 async def init_db():

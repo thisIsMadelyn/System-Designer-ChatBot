@@ -1,93 +1,143 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
 
 
-# ─────────────────────────────────────────
-# REQUEST / RESPONSE
-# ─────────────────────────────────────────
-
-class ChatRequest(BaseModel):
-    session_id: str = Field(..., description="Unique session identifier")
-    message: str = Field(..., description="User message")
-
+# ── Input ─────────────────────────────────────────────────────
 
 class DesignRequest(BaseModel):
-    """Δομημένη φόρμα που συμπληρώνει ο χρήστης"""
-    session_id: str = Field(..., description="Unique session identifier")
-    project_description: str = Field(..., description="What the system should do")
-    team_size: str = Field(..., description="e.g. '3 developers'")
-    scale: str = Field(..., description="e.g. '10,000 users/day'")
-    deadline: str = Field(..., description="e.g. '3 months'")
-    tech_constraints: str = Field(..., description="e.g. 'Must use Spring Boot, MySQL'")
-    capital_constraints: str = Field(..., description="e.g. 'Limited to free tier cloud'")
-    extra_details: str = Field(default="", description="Any additional information")
+    project_description:  str
+    team_size:            Optional[str] = None
+    scale:                Optional[str] = None
+    deadline:             Optional[str] = None
+    tech_constraints:     Optional[str] = None
+    capital_constraints:  Optional[str] = None
+    extra_details:        Optional[str] = None
+
+    def build_prompt(self) -> str:
+        lines = [f"Project Description: {self.project_description}"]
+        if self.team_size:           lines.append(f"Team Size: {self.team_size}")
+        if self.scale:               lines.append(f"Expected Scale: {self.scale}")
+        if self.deadline:            lines.append(f"Deadline: {self.deadline}")
+        if self.tech_constraints:    lines.append(f"Tech Constraints: {self.tech_constraints}")
+        if self.capital_constraints: lines.append(f"Budget: {self.capital_constraints}")
+        if self.extra_details:       lines.append(f"Extra Details: {self.extra_details}")
+        return "\n".join(lines)
 
 
-class ChatResponse(BaseModel):
-    session_id: str
-    answer: str
-    structured_output: Optional["StructuredDesignOutput"] = None
+# ── Agent 1: System Analyst ───────────────────────────────────
+
+class SystemAnalystOutput(BaseModel):
+    summary:      str
+    requirements: list[str]
+    tech_stack:   dict
+    agent_plan:   list[str]
 
 
-# ─────────────────────────────────────────
-# AGENT OUTPUTS
-# ─────────────────────────────────────────
+# ── Agent 2: Architect ────────────────────────────────────────
+
+class ArchitectOutput(BaseModel):
+    summary:           str
+    package_structure: str        # ASCII tree
+    design_patterns:   list[str]
+    uml_class:         str        # PlantUML
+    uml_sequence:      str        # PlantUML
+    tech_versions:     dict
+
+
+# ── Agent 3: Database ─────────────────────────────────────────
+
+class EntityField(BaseModel):
+    name:        str
+    type:        str
+    annotations: list[str] = []
+
+class EntityDefinition(BaseModel):
+    name:   str
+    table:  str
+    fields: list[EntityField]
+
+class DatabaseAgentOutput(BaseModel):
+    summary:                str
+    entities:               list[dict]   # list of EntityDefinition-like dicts
+    relationships:          list[str]
+    java_code:              str
+    application_properties: str
+
+
+# ── Agent 4: Backend Layer (Service + Controller merged) ──────
+
+class BackendLayerOutput(BaseModel):
+    summary:        str
+    dto_code:       str   # all DTOs
+    service_code:   str   # interfaces + implementations
+    exception_code: str   # exceptions + GlobalExceptionHandler
+    controller_code: str  # REST controllers
+    swagger_config: str   # OpenAPI config
+
+
+# ── Agent 5: DevOps ───────────────────────────────────────────
+
+class DevOpsOutput(BaseModel):
+    summary:        str
+    dockerfile:     str
+    docker_compose: str
+    dockerignore:   str
+    readme:         str
+
+
+# ── Agent 6: Testing ──────────────────────────────────────────
+
+class TestingOutput(BaseModel):
+    summary:           str
+    unit_tests:        str
+    test_report:       str
+    errors:            list[dict]   # [{file, line, description, cause}]
+    coverage_estimate: str
+
+
+# ── Final Microservice Output ─────────────────────────────────
+
+class MicroserviceOutput(BaseModel):
+    system_analyst:  Optional[SystemAnalystOutput]  = None
+    architect:       Optional[ArchitectOutput]       = None
+    database:        Optional[DatabaseAgentOutput]   = None
+    backend_layer:   Optional[BackendLayerOutput]    = None
+    devops:          Optional[DevOpsOutput]          = None
+    testing:         Optional[TestingOutput]         = None
+    final_summary:   str = ""
+
+
+# ── Legacy (chat_router compatibility) ───────────────────────
 
 class RequirementsOutput(BaseModel):
-    functional_requirements: list[str]
-    non_functional_requirements: list[str]
-    constraints: list[str]
-    scale_estimation: str
-    summary: str
-
+    summary:                 str = ""
+    functional_requirements: list[str] = []
+    non_functional:          list[str] = []
+    constraints:             list[str] = []
+    scale_estimation:        str = ""
 
 class ArchitectureOutput(BaseModel):
-    architecture_style: str
-    services: list[dict]
-    tradeoffs: list[str]
-    tech_stack: dict
-    summary: str
-
+    summary:            str = ""
+    architecture_style: str = ""
+    services:           list[dict] = {}
+    tech_stack:         dict = {}
+    tradeoffs:          dict = {}
 
 class DatabaseOutput(BaseModel):
-    entities: list[dict]
-    relationships: list[str]
-    mysql_schema_sql: str
-    erd_mermaid: str
-    summary: str
-
+    summary:       str = ""
+    entities:      list[dict] = []
+    relationships: list[str] = []
+    mermaid_erd:   str = ""
+    sql_schema:    str = ""
 
 class ApiDesignOutput(BaseModel):
-    endpoints: list[dict]
-    spring_security_config: str
-    api_mermaid_diagram: str
-    docker_compose_snippet: str
-    summary: str
-
-
-# ─────────────────────────────────────────
-# FINAL STRUCTURED OUTPUT
-# ─────────────────────────────────────────
+    summary:   str = ""
+    endpoints: list[dict] = []
+    security:  dict = {}
+    docker:    str = ""
 
 class StructuredDesignOutput(BaseModel):
     requirements: Optional[RequirementsOutput] = None
     architecture: Optional[ArchitectureOutput] = None
-    database: Optional[DatabaseOutput] = None
-    api_design: Optional[ApiDesignOutput] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-# ─────────────────────────────────────────
-# DB RECORD
-# ─────────────────────────────────────────
-
-class MessageRecord(BaseModel):
-    id: Optional[int] = None
-    session_id: str
-    role: str
-    content: str
-    created_at: Optional[datetime] = None
-
-
-ChatResponse.model_rebuild()
+    database:     Optional[DatabaseOutput]     = None
+    api_design:   Optional[ApiDesignOutput]    = None

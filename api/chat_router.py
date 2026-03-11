@@ -1,47 +1,39 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import get_db, save_message, load_history, get_all_sessions
-from models.schemas import ChatRequest, ChatResponse, DesignRequest
+from db import get_db
+from db.queries import save_message, load_history
+from models.schemas import DesignRequest, MicroserviceOutput
 from agents.orchestrator import run_orchestrator
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
+# ── Request/Response models (local, no longer in schemas) ─────
+
+class ChatRequest(BaseModel):
+    message:    str
+    session_id: str = "default"
+
+class ChatResponse(BaseModel):
+    session_id:       str
+    answer:           str
+    structured_output: Optional[MicroserviceOutput] = None
+
+
+# ── Helpers ───────────────────────────────────────────────────
+
 def build_prompt_from_form(req: DesignRequest) -> str:
-    """
-    Μετατρέπει τη δομημένη φόρμα σε structured prompt
-    που καταλαβαίνει ο orchestrator.
-    """
-    prompt = f"""Design a complete system for the following project:
+    return req.build_prompt()
 
-PROJECT DESCRIPTION:
-{req.project_description}
 
-TEAM SIZE:
-{req.team_size}
-
-SCALE:
-{req.scale}
-
-DEADLINE:
-{req.deadline}
-
-TECHNOLOGY CONSTRAINTS:
-{req.tech_constraints}
-
-CAPITAL CONSTRAINTS:
-{req.capital_constraints}
-"""
-    if req.extra_details.strip():
-        prompt += f"\nADDITIONAL DETAILS:\n{req.extra_details}"
-
-    return prompt
-
+# ── Routes ────────────────────────────────────────────────────
 
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    """Ελεύθερο chat με τον assistant."""
+    """Free-form chat with the assistant."""
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -52,7 +44,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         history=history,
     )
 
-    await save_message(db, request.session_id, "user", request.message)
+    await save_message(db, request.session_id, "user",      request.message)
     await save_message(db, request.session_id, "assistant", result["response"])
 
     return ChatResponse(
@@ -64,24 +56,25 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/design", response_model=ChatResponse)
 async def design(request: DesignRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Δέχεται δομημένη φόρμα, χτίζει prompt και τρέχει
-    τον πλήρη pipeline των 4 agents.
-    """
-    prompt = build_prompt_from_form(request)
+    """Structured form → full 6-agent pipeline."""
+    if not hasattr(request, "session_id"):
+        session_id = "default"
+    else:
+        session_id = getattr(request, "session_id", "default")
 
-    history = await load_history(db, request.session_id)
+    prompt  = build_prompt_from_form(request)
+    history = await load_history(db, session_id)
 
     result = await run_orchestrator(
         user_message=prompt,
         history=history,
     )
 
-    await save_message(db, request.session_id, "user", prompt)
-    await save_message(db, request.session_id, "assistant", result["response"])
+    await save_message(db, session_id, "user",      prompt)
+    await save_message(db, session_id, "assistant", result["response"])
 
     return ChatResponse(
-        session_id=request.session_id,
+        session_id=session_id,
         answer=result["response"],
         structured_output=result["structured_output"],
     )
@@ -93,16 +86,10 @@ async def get_history(session_id: str, db: AsyncSession = Depends(get_db)):
     return {"session_id": session_id, "messages": history}
 
 
-@router.get("/sessions")
-async def list_sessions(db: AsyncSession = Depends(get_db)):
-    sessions = await get_all_sessions(db)
-    return {"sessions": sessions}
-
-
 @router.delete("/history/{session_id}")
 async def clear_history(session_id: str, db: AsyncSession = Depends(get_db)):
     from sqlalchemy import delete
-    from db.database import ConversationMessage
+    from db.models import ConversationMessage
     await db.execute(
         delete(ConversationMessage).where(
             ConversationMessage.session_id == session_id
