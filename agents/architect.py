@@ -37,20 +37,24 @@ com.microservice.[name]/
 
 Do NOT include any text outside the JSON."""
 
+# παίρνει content απο τον προηγούμενο agent
 
 async def run_architect(user_prompt: str, analyst: SystemAnalystOutput) -> ArchitectOutput:
+
     llm = ChatOpenAI(
         model=os.getenv("OPENAI_MODEL", "gpt-4o"),
         temperature=0.2,
         api_key=os.getenv("OPENAI_API_KEY"),
     )
+    # δέχεται το output του system analyst και το χρησιμοποιεί ως παράμετρο
+    # για να φτιάξει πιο σύνθετο υλικό
     context = f"""Requirements from System Analyst:
-Summary: {analyst.summary}
-Requirements: {json.dumps(analyst.requirements, indent=2)}
-Tech Stack: {json.dumps(analyst.tech_stack, indent=2)}
+    Summary: {analyst.summary}
+    Requirements: {json.dumps(analyst.requirements, indent=2)}
+    Tech Stack: {json.dumps(analyst.tech_stack, indent=2)}
 
-Original user request:
-{user_prompt}"""
+    Original user request:
+    {user_prompt}"""
 
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),

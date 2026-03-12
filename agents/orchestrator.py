@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, END
 from agents.llm_factory import get_llm
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
 from typing import TypedDict, Optional
 import os
 
@@ -21,7 +21,8 @@ USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 
 # ── State ─────────────────────────────────────────────────────
 
-class DesignState(TypedDict):
+# πηγαίνει σε κάθε agent και παίρνει το αποτέλεσμα του
+class DesignState(TypedDict, total=False):
     user_message:   str
     history:        list[dict]
     needs_design:   bool
@@ -90,8 +91,8 @@ MOCK_OUTPUT = MicroserviceOutput(
 )
 
 
-# ── Nodes ─────────────────────────────────────────────────────
-
+# ── Router Node ─────────────────────────────────────────────────────
+#  ρωτάει το llm αν ο χρήστης θέλει design ή chat και αυτό απαντάει 'DESIGN'/'CHAT'
 async def router_node(state: DesignState) -> DesignState:
     if USE_MOCK:
         return {**state, "needs_design": True}
@@ -101,7 +102,8 @@ async def router_node(state: DesignState) -> DesignState:
     )])
     return {**state, "needs_design": response.content.strip().upper() == "DESIGN"}
 
-
+# ── Agent Nodes ───────────────────────────────────────────────────────
+# κάθε node ακολουθεί
 async def analyst_node(state: DesignState) -> DesignState:
     if USE_MOCK: return {**state, "system_analyst": MOCK_OUTPUT.system_analyst}
     result = await run_system_analyst(state["user_message"])
@@ -110,7 +112,7 @@ async def analyst_node(state: DesignState) -> DesignState:
 
 async def architect_node(state: DesignState) -> DesignState:
     if USE_MOCK: return {**state, "architect": MOCK_OUTPUT.architect}
-    # καλω την συναρτηση run_architect απο το architect.py αρχείο
+    # καλώ τη συνάρτηση run_architect απο το architect.py αρχείο
     result = await run_architect(state["user_message"], state["system_analyst"])
     return {**state, "architect": result}
 
@@ -162,7 +164,7 @@ async def chat_node(state: DesignState) -> DesignState:
     if USE_MOCK:
         return {**state, "final_response": "Mock chat — describe a Java microservice and I'll run the full pipeline!"}
     llm = get_llm(temperature=0.5)
-    messages = [SystemMessage(content="You are a Java Spring Boot microservice expert.")]
+    messages: list[BaseMessage] = [SystemMessage(content="You are a Java Spring Boot microservice expert.")]
     for msg in state["history"][-6:]:
         if msg["role"] == "user": messages.append(HumanMessage(content=msg["content"]))
         else: messages.append(SystemMessage(content=msg["content"]))
@@ -171,6 +173,9 @@ async def chat_node(state: DesignState) -> DesignState:
     return {**state, "final_response": response.content}
 
 
+# αυτή η συνάρτηση λέει στο langgraph αν needs_design=True,
+# τότε πήγαινε στον analyst αλλιώς πήγαινε στο chat
+# είναι δηλαδή το σημείο διακλάδωσης του γράφου
 def route_decision(state: DesignState) -> str:
     return "analyst" if state["needs_design"] else "chat"
 
