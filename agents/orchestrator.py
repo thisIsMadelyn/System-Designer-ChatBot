@@ -2,13 +2,12 @@ from langgraph.graph import StateGraph, END
 from agents.llm_factory import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
 from typing import TypedDict, Optional
-import json, os
+import os
 
 from models.schemas import (
     MicroserviceOutput,
     SystemAnalystOutput, ArchitectOutput, DatabaseAgentOutput,
-    BackendLayerOutput, DevOpsOutput, TestingOutput,
-    StructuredDesignOutput, # na to vgalo
+    BackendLayerOutput, DevOpsOutput, TestingOutput
 )
 from agents.system_anaylst        import run_system_analyst
 from agents.architect             import run_architect

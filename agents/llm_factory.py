@@ -1,15 +1,3 @@
-# agents/llm_factory.py
-#
-# Υποστηρίζει δύο providers:
-#   - OpenAI (gpt-4.1) όταν υπάρχει OPENAI_API_KEY  ← ΚΥΡΙΩΣ για hackathon
-#   - Google Gemini fallback όταν υπάρχει GOOGLE_API_KEY
-#
-# .env παράδειγμα:
-#   OPENAI_API_KEY=sk-...
-#   OPENAI_MODEL=gpt-4.1          # default αν δεν οριστεί
-#   GOOGLE_API_KEY=...            # fallback
-#   GEMINI_MODEL=gemini-1.5-flash # fallback model
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
