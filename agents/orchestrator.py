@@ -8,7 +8,7 @@ from models.schemas import (
     MicroserviceOutput,
     SystemAnalystOutput, ArchitectOutput, DatabaseAgentOutput,
     BackendLayerOutput, DevOpsOutput, TestingOutput,
-    StructuredDesignOutput,
+    StructuredDesignOutput, # na to vgalo
 )
 from agents.system_anaylst        import run_system_analyst
 from agents.architect             import run_architect
@@ -111,6 +111,7 @@ async def analyst_node(state: DesignState) -> DesignState:
 
 async def architect_node(state: DesignState) -> DesignState:
     if USE_MOCK: return {**state, "architect": MOCK_OUTPUT.architect}
+    # καλω την συναρτηση run_architect απο το architect.py αρχείο
     result = await run_architect(state["user_message"], state["system_analyst"])
     return {**state, "architect": result}
 

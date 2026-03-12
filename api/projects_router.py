@@ -4,6 +4,8 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
 import json
+from fastapi.responses import StreamingResponse
+import asyncio
 
 from db.database import get_db
 from db.models import Project, InputForm, User
@@ -349,3 +351,160 @@ def _build_user_message(body: RunPipelineRequest) -> str:
         parts.append(f"Extra details: {body.extra_details}")
 
     return "\n".join(parts)
+
+
+@router.post(
+    "/{project_id}/run/stream",
+    status_code=status.HTTP_200_OK,
+)
+async def run_pipeline_stream(
+        project_id: int,
+        body: RunPipelineRequest,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+):
+    """
+    SSE endpoint — στέλνει progress events καθώς τελειώνει κάθε agent.
+
+    Events format (text/event-stream):
+        data: {"type": "progress", "agent": "System Analyst", "step": 1, "total": 6}
+        data: {"type": "progress", "agent": "Architect",      "step": 2, "total": 6}
+        ...
+        data: {"type": "done", "form_id": 5, "response": "...", "structured_output": {...}}
+        data: {"type": "error", "message": "..."}
+    """
+
+    # ── Ownership check ───────────────────────────────────────
+    proj_result = await db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.user_id == current_user.id,
+        )
+    )
+    if not proj_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # ── Δημιουργία InputForm ──────────────────────────────────
+    form = InputForm(
+        project_id=project_id,
+        user_id=current_user.id,
+        project_description=body.project_description,
+        team_size=body.team_size,
+        scale=body.scale,
+        deadline=body.deadline,
+        tech_constraints=body.tech_constraints,
+        capital_constraints=body.capital_constraints,
+        extra_details=body.extra_details,
+    )
+    db.add(form)
+    await db.commit()
+    await db.refresh(form)
+    form_id = form.id
+
+    user_message = _build_user_message(body)
+    history = body.history
+
+    async def event_generator():
+        """
+        Generator που τρέχει τους agents έναν-έναν και στέλνει SSE events.
+        Κάθε agent τρέχει ξεχωριστά ώστε να μπορούμε να στείλουμε progress.
+        """
+        from agents.system_anaylst import run_system_analyst
+        from agents.architect import run_architect
+        from agents.database import run_database_agent
+        from agents.backend_layer import run_backend_layer
+        from agents.devops import run_devops
+        from agents.testing import run_testing
+        from agents.llm_factory import get_llm
+        from langchain_core.messages import HumanMessage
+        from models.schemas import (
+            MicroserviceOutput, SystemAnalystOutput, ArchitectOutput,
+            DatabaseAgentOutput, BackendLayerOutput, DevOpsOutput, TestingOutput,
+        )
+
+        def sse(payload: dict) -> str:
+            """Μετατρέπει dict σε SSE format."""
+            return f"data: {json.dumps(payload)}\n\n"
+
+        try:
+            # ── Agent 1: System Analyst ───────────────────────
+            yield sse({"type": "progress", "agent": "System Analyst", "step": 1, "total": 6, "pct": 0})
+            system_analyst = await run_system_analyst(user_message)
+
+            # ── Agent 2: Architect ────────────────────────────
+            yield sse({"type": "progress", "agent": "Architect", "step": 2, "total": 6, "pct": 17})
+            architect = await run_architect(user_message, system_analyst)
+
+            # ── Agent 3: Database ─────────────────────────────
+            yield sse({"type": "progress", "agent": "Database Agent", "step": 3, "total": 6, "pct": 33})
+            database = await run_database_agent(user_message, system_analyst, architect)
+
+            # ── Agent 4: Backend Layer ────────────────────────
+            yield sse({"type": "progress", "agent": "Backend Layer", "step": 4, "total": 6, "pct": 50})
+            backend_layer = await run_backend_layer(user_message, system_analyst, architect, database)
+
+            # ── Agent 5: DevOps ───────────────────────────────
+            yield sse({"type": "progress", "agent": "DevOps Engineer", "step": 5, "total": 6, "pct": 67})
+            devops = await run_devops(user_message, system_analyst, architect)
+
+            # ── Agent 6: Testing ──────────────────────────────
+            yield sse({"type": "progress", "agent": "Testing Manager", "step": 6, "total": 6, "pct": 83})
+            testing = await run_testing(user_message, system_analyst, database, backend_layer, backend_layer)
+
+            # ── Summarizer ────────────────────────────────────
+            yield sse({"type": "progress", "agent": "Finalizing...", "step": 6, "total": 6, "pct": 95})
+            llm = get_llm(temperature=0.3)
+            summary_response = await llm.ainvoke([HumanMessage(content=
+                                                               f"Summarize this Java microservice design in clear markdown:\n"
+                                                               f"System: {system_analyst.summary}\n"
+                                                               f"Architecture: {architect.summary}\n"
+                                                               f"Database: {database.summary}\n"
+                                                               f"Backend: {backend_layer.summary}\n"
+                                                               f"DevOps: {devops.summary}\n"
+                                                               f"Testing: {testing.summary}\n"
+                                                               f"Coverage: {testing.coverage_estimate}"
+                                                               )])
+            final_response = summary_response.content
+
+            # ── Αποθήκευση στη MySQL ──────────────────────────
+            structured = MicroserviceOutput(
+                system_analyst=system_analyst,
+                architect=architect,
+                database=database,
+                backend_layer=backend_layer,
+                devops=devops,
+                testing=testing,
+                final_summary=final_response,
+            )
+            structured_dict = structured.model_dump()
+
+            # Update form με result
+            res = await db.execute(
+                select(InputForm).where(InputForm.id == form_id)
+            )
+            saved_form = res.scalar_one_or_none()
+            if saved_form:
+                saved_form.result_json = json.dumps(structured_dict)
+                await db.commit()
+
+            # ── Done event ────────────────────────────────────
+            yield sse({
+                "type": "done",
+                "form_id": form_id,
+                "response": final_response,
+                "structured_output": structured_dict,
+                "pct": 100,
+            })
+
+        except Exception as e:
+            yield sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # σημαντικό για nginx
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+        },
+    )
