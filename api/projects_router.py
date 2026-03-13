@@ -52,9 +52,12 @@ class InputFormResponse(BaseModel):
 
 # ── Project CRUD ──────────────────────────────────────────────
 
+# get method
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # έτσι διαβάζει το JWT token
+        #για να επαληθεύσει το χρήστη
+        # για να συνδεθεί με την βάση δεδομένων
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -249,6 +252,8 @@ class RunPipelineResponse(BaseModel):
     structured_output: Optional[dict]  # τα 6 agent outputs
 
 
+# το run_pipeline κάνει 5 πράγματα
+# ownership check
 @router.post(
     "/{project_id}/run",
     response_model=RunPipelineResponse,
