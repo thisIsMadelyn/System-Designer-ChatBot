@@ -229,15 +229,10 @@ def _form_to_response(f: InputForm) -> InputFormResponse:
         created_at=str(f.created_at),
     )
 
-# api/projects_router.py
-# ΠΡΟΣΘΕΣΕ αυτό μετά το υπάρχον @router.post("/{project_id}/forms")
-# (όλος ο υπόλοιπος κώδικας παραμένει ακριβώς ίδιος)
-
 from agents.orchestrator import run_orchestrator  # νέο import στην κορυφή
 
 
 class RunPipelineRequest(BaseModel):
-    """Body για το /run endpoint — ίδια fields με InputFormCreate"""
     project_description: str
     team_size:           Optional[str] = None
     scale:               Optional[str] = None
@@ -250,7 +245,7 @@ class RunPipelineRequest(BaseModel):
 
 class RunPipelineResponse(BaseModel):
     form_id:          int         # το ID της νέας InputForm εγγραφής
-    response:         str         # markdown summary
+    response:         str         # Markdown summary
     structured_output: Optional[dict]  # τα 6 agent outputs
 
 

@@ -1,3 +1,4 @@
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 import json, os
@@ -18,7 +19,7 @@ You MUST respond with ONLY valid JSON matching this exact structure:
 Rules for Dockerfile:
 - Multi-stage build: stage 1 = maven:3.9-eclipse-temurin-21 for build, stage 2 = eclipse-temurin:21-jre-alpine for runtime
 - Layer caching: copy pom.xml and download dependencies first
-- Run as non-root user (create 'appuser')
+- Run as non-root user (create 'app user')
 - Add HEALTHCHECK
 - Add LABELs for metadata
 - Set memory limits via JAVA_OPTS
@@ -40,10 +41,11 @@ Rules for README:
 
 Do NOT include any text outside the JSON."""
 
-
+# απο τον analyst παίρνει tech_stack, (java edition)
+# απο τον architect παίρνει tech_version (ακριβείς εκδόσεις)
 async def run_devops(
     user_prompt: str,
-    analyst: SystemAnalystOutput,
+    analyst: SystemAnalystOutput, # απο τον analyst παίρνει το #
     architect: ArchitectOutput,
 ) -> DevOpsOutput:
     llm = ChatOpenAI(

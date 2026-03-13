@@ -35,13 +35,14 @@ Unit test rules:
 
 Do NOT wrap in markdown. Do NOT add any text before or after the JSON."""
 
-
+# παίρνει input απο τους περισσότερους agents
 async def run_testing(
     user_prompt: str,
     analyst: SystemAnalystOutput,
     database: DatabaseAgentOutput,
     backend: BackendLayerOutput,
-    _ignored=None,  # kept for signature compatibility
+    #  το _ignored είναι workaround
+    _ignored=None,
 ) -> TestingOutput:
     llm = get_llm(temperature=0.1)
     context = f"""=== SYSTEM ANALYST ===
@@ -51,6 +52,9 @@ Requirements: {json.dumps(analyst.requirements, indent=2)}
 === ENTITIES ===
 {json.dumps(database.entities, indent=2)}
 
+# επειδή ο κώδικας του service και controller 
+# είναι τεράστιος κόβουμε κάποιους χαρακτήρες για να είμαστε εντός 
+# των ορίων των LLM tokens
 === SERVICE CODE ===
 {backend.service_code[:3000]}
 
